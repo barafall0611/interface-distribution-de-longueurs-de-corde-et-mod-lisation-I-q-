@@ -380,7 +380,7 @@ def build_iq_loglog_figure(res, case_name):
     ax.set_yscale("log")
     ax.set_xlabel("Q")
     ax.set_ylabel("Intensité modélisée")
-    ax.set_title(f"I(Q) (log-log) — {case_name}", fontsize=12, fontweight="bold")
+    ax.set_title(f"I(Q) (log-log) — {case_name}", fontsize=12)
 
     fig.tight_layout()
     return fig
@@ -396,18 +396,25 @@ def build_iq_linear_figure(res, case_name):
     q = q[mask]
     I = I[mask]
 
-    # Comme ton affichage : commencer après le 1er point (optionnel)
+    # Comme ton affichage matplotlib
     if q.size > 1:
         q = q[1:]
         I = I[1:]
 
     ax.plot(q, I, "xr", linewidth=2)
+
     ax.set_xlabel("Q", fontsize=14, fontweight="bold")
     ax.set_ylabel("Intensité modélisée", fontsize=14, fontweight="bold")
-    ax.set_title("Modélisation de l'intensité en fonction de Q", fontsize=16, fontweight="bold")
+
+    # ✅ Titre clair + nom du cas
+    ax.set_title(
+        f"I(Q) — {case_name}\nModélisation de l'intensité en fonction de Q",
+        fontsize=12
+    )
 
     fig.tight_layout()
     return fig
+
 
 # =============================================================================
 # EXECUTER CAS
@@ -779,8 +786,8 @@ class MainWindow(QMainWindow):
                 self.canvas_iq_lin.ax.plot(q2, I2, "xr", linewidth=2)
                 self.canvas_iq_lin.ax.set_xlabel("Q", fontsize=14, fontweight="bold")
                 self.canvas_iq_lin.ax.set_ylabel("Intensité modélisée", fontsize=14, fontweight="bold")
-                self.canvas_iq_lin.ax.set_title("Modélisation de l'intensité en fonction de Q",
-                                                fontsize=16, fontweight="bold")
+                self.canvas_iq_lin.ax.set_title(f"Modélisation de l'intensité en fonction de Q -{last['case']}",
+                                                fontsize=12, fontweight="bold")
                 self.canvas_iq_lin.fig.tight_layout()
                 self.canvas_iq_lin.draw()
 
