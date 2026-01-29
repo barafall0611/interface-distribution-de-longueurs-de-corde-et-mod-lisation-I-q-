@@ -1,0 +1,70 @@
+INSTALLER PIP SUR WINDOWS (SI PIP N’EST PAS PRÉSENT APRÈS L’INSTALLATION DE PYTHON)
+
+1) Vérifier que Python est installé
+Ouvrir CMD ou PowerShell et taper :
+
+python --version
+
+Si une version s’affiche, Python fonctionne.
+Sinon, Python n’est pas dans le PATH.
+
+--------------------------------------------------
+
+2) Télécharger le script officiel pour installer pip
+
+Aller à l’adresse :
+https://bootstrap.pypa.io/get-pip.py
+
+Enregistrer le fichier sous le nom :
+get-pip.py
+
+Exemple d’emplacement :
+C:\Users\TON_NOM\Downloads\get-pip.py
+
+--------------------------------------------------
+
+3) Installer pip
+
+Ouvrir CMD ou PowerShell, puis taper :
+
+cd %USERPROFILE%\Downloads
+python get-pip.py
+
+Attendre la fin de l’installation.
+
+--------------------------------------------------
+
+4) Vérifier que pip est installé
+
+pip --version
+
+Si ça ne marche pas :
+
+python -m pip --version
+
+--------------------------------------------------
+
+5) Si pip est installé mais non reconnu
+
+Ajouter pip au PATH :
+
+C:\Users\TON_NOM\AppData\Local\Programs\Python\Python3X\Scripts\
+
+(Python3X = version installée, ex : Python312)
+
+Redémarrer CMD ou PowerShell.
+
+--------------------------------------------------
+
+6) Test final
+
+pip install requests
+
+Si le package s’installe sans erreur, pip fonctionne correctement.
+
+--------------------------------------------------
+
+IMPORTANT POUR LES PROCHAINES INSTALLATIONS DE PYTHON :
+Toujours cocher :
+- Add Python to PATH
+- Install pip
