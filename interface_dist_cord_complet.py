@@ -13,7 +13,7 @@ import contextlib
 from pathlib import Path
 import numpy as np
 
-from PyQt5.QtCore import Qt
+
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFileDialog, QMessageBox,
     QVBoxLayout, QHBoxLayout, QFormLayout, QGridLayout, QGroupBox,
@@ -34,7 +34,7 @@ from skimage.draw import line as sk_line
 
 
 # =============================================================================
-# STYLE (titres visibles + compact)
+# STYLE titres visibles + compact
 # =============================================================================
 APP_QSS = """
 * { font-family: "Segoe UI", "Inter", Arial; font-size: 11px; }
@@ -282,9 +282,10 @@ def modeliser_Iq_matlab(fm, fv, SurfSpe, eps_denom=1e-12, k0=1):
     k0 = max(1, int(k0))
     if k0 >= half:
         return np.array([]), np.array([])
-    s = np.arange(k0, half + 1, dtype=float) / (float(L) / 2)
+    s = np.arange(k0, half + 1, dtype=float) / float(L)
     a_parent = a_parent[k0 - 1:]
     q = 2 * np.pi * s
+    q = q/2
     parent_bis = a_parent / (s ** 2)
     derv = np.diff(parent_bis) / np.diff(s)
     I = (-SurfSpe / (16 * s[:-1] * (np.pi ** 3))) * derv
@@ -317,7 +318,7 @@ def save_bool_png(path: Path, b: np.ndarray):
 
 
 # =============================================================================
-# CLD FIGURE : STYLE FIXE
+# CLD FIGURE 
 # =============================================================================
 def build_cld_figure(res, case_name, *, plot_logy, px_min, xmax_r):
     fig = Figure(figsize=(7, 5), dpi=160)
@@ -325,10 +326,10 @@ def build_cld_figure(res, case_name, *, plot_logy, px_min, xmax_r):
 
     if res["Rp"].size:
         mp = res["fp"] > 0 if plot_logy else np.ones_like(res["fp"], dtype=bool)
-        ax.plot(res["Rp"][mp], res["fp"][mp], "-o", markersize=3, linewidth=1, label="Pores")
+        ax.plot(res["Rp"][mp], res["fp"][mp], "-o", markersize=3, linewidth=1, label="Phase Noire")
     if res["Rm"].size:
         mm = res["fm"] > 0 if plot_logy else np.ones_like(res["fm"], dtype=bool)
-        ax.plot(res["Rm"][mm], res["fm"][mm], "-o", markersize=3, linewidth=1, label="Matière")
+        ax.plot(res["Rm"][mm], res["fm"][mm], "-o", markersize=3, linewidth=1, label="Phase Blanche")
 
     ax.set_xlabel("R (pixel)")
     ax.set_ylabel("f(R) (probabilité)")
@@ -341,22 +342,25 @@ def build_cld_figure(res, case_name, *, plot_logy, px_min, xmax_r):
     ax.legend(loc="lower left", fontsize=10, framealpha=0.9)
 
     txt = (
-        "φ (porosité) = %.4f\n"
+        "φ (Phase Noire) = %.4f\n"
+        "φ (Phase Blanche) = %.4f\n"
         "⟨Lm⟩ = %.2f px (max=%d)\n"
         "⟨Lp⟩ = %.2f px (max=%d)\n"
         "Sv (surface spécifique) = %.3e px⁻¹"
     ) % (
         res["phi"],
+        1.0 - res["phi"],
         res["Lm_px"], res["max_m"],
         res["Lp_px"], res["max_p"],
         res["SurfSpe_1_per_px"]
     )
+        
 
     ax.text(
         0.98, 0.98, txt,
         transform=ax.transAxes,
         ha="right", va="top",
-        fontsize=10,
+        fontsize=8,
         bbox=dict(boxstyle="round,pad=0.35", alpha=0.85)
     )
 
@@ -396,7 +400,7 @@ def build_iq_linear_figure(res, case_name):
     q = q[mask]
     I = I[mask]
 
-    # Comme ton affichage matplotlib
+  
     if q.size > 1:
         q = q[1:]
         I = I[1:]
@@ -423,8 +427,8 @@ def executer_cas(
     case_name, img_gray, binary0, *,
     do_isolated, do_border,
     N_LINES, PX_MIN, BINWIDTH_PX, CAL_LEN_UM_PER_PX, MIN_OBJECT_SIZE,
-    seed_p=1, seed_m=2
-):
+    seed_p=1, seed_m=2):
+    
     binary = binary0.copy()
     if do_isolated:
         binary = supprimer_pixels_isoles(binary, min_size=MIN_OBJECT_SIZE)
@@ -510,12 +514,12 @@ class MainWindow(QMainWindow):
         self.prefix = QLineEdit("resultats")
 
         # Params
-        self.nlines = QSpinBox(); self.nlines.setRange(100, 5_000_000); self.nlines.setValue(60000)
+        self.nlines = QSpinBox(); self.nlines.setRange(100, 5_000_000); self.nlines.setValue(10000)
         self.thr = QDoubleSpinBox(); self.thr.setRange(0.0, 255.0); self.thr.setDecimals(1); self.thr.setValue(125.7)
         self.pxmin = QSpinBox(); self.pxmin.setRange(1, 500); self.pxmin.setValue(1)
         self.binw = QSpinBox(); self.binw.setRange(1, 50); self.binw.setValue(1)
         self.callen = QDoubleSpinBox(); self.callen.setRange(1e-9, 1e9); self.callen.setDecimals(6); self.callen.setValue(1.0)
-        self.minobj = QSpinBox(); self.minobj.setRange(1, 1000); self.minobj.setValue(5)
+        self.minobj = QSpinBox(); self.minobj.setRange(1, 10000); self.minobj.setValue(5)
         self.logy = QCheckBox("Axe Y en log"); self.logy.setChecked(True)
         self.xmax = QSpinBox(); self.xmax.setRange(1, 100000); self.xmax.setValue(150)
         self.export_bin = QCheckBox("Exporter les binaires"); self.export_bin.setChecked(True)
@@ -564,7 +568,7 @@ class MainWindow(QMainWindow):
         io_grid.addWidget(QLabel("Dossier"), 1, 0)
         io_grid.addWidget(self.out_value, 1, 1)
         io_grid.addWidget(self.btn_out, 1, 2)
-        io_grid.addWidget(QLabel("Préfixe"), 2, 0)
+        io_grid.addWidget(QLabel("Nom du Dossier"), 2, 0)
         io_grid.addWidget(self.prefix, 2, 1, 1, 2)
 
         p_box = QGroupBox("Paramètres")
@@ -680,6 +684,8 @@ class MainWindow(QMainWindow):
                     ("Pas de correction",     False, False, 3, 4),
                     ("correction des bords",  False, True,  5, 6),
                     ("correction pixels isolés", True, False, 7, 8),
+                    
+                    
                 ]
 
                 last = None
@@ -734,10 +740,10 @@ class MainWindow(QMainWindow):
                 self.canvas_cld.ax.clear()
                 if last["Rp"].size:
                     mp = last["fp"] > 0 if PLOT_LOGY else np.ones_like(last["fp"], dtype=bool)
-                    self.canvas_cld.ax.plot(last["Rp"][mp], last["fp"][mp], "-o", markersize=3, linewidth=1, label="Pores")
+                    self.canvas_cld.ax.plot(last["Rp"][mp], last["fp"][mp], "-o", markersize=3, linewidth=1, label="Phase Noire")
                 if last["Rm"].size:
                     mm = last["fm"] > 0 if PLOT_LOGY else np.ones_like(last["fm"], dtype=bool)
-                    self.canvas_cld.ax.plot(last["Rm"][mm], last["fm"][mm], "-o", markersize=3, linewidth=1, label="Matière")
+                    self.canvas_cld.ax.plot(last["Rm"][mm], last["fm"][mm], "-o", markersize=3, linewidth=1, label="Phase Blanche")
 
                 self.canvas_cld.ax.set_xlabel("R (pixel)")
                 self.canvas_cld.ax.set_ylabel("f(R) (probabilité)")
@@ -748,28 +754,31 @@ class MainWindow(QMainWindow):
                 self.canvas_cld.ax.legend(loc="lower left", fontsize=10, framealpha=0.9)
 
                 txt = (
-                    "φ (porosité) = %.4f\n"
-                    "⟨Lm⟩ = %.2f px (max=%d)\n"
-                    "⟨Lp⟩ = %.2f px (max=%d)\n"
+                    "φ (Phase Noire) = %.4f\n"
+                    "φ (Phase Blanche) = %.4f\n"
+                    "⟨L Blanche⟩ = %.2f px (max=%d)\n"
+                    "⟨L Noire⟩ = %.2f px (max=%d)\n"
                     "Sv (surface spécifique) = %.3e px⁻¹"
                 ) % (
-                    last["phi"],
-                    last["Lm_px"], last["max_m"],
-                    last["Lp_px"], last["max_p"],
-                    last["SurfSpe_1_per_px"]
+                    res["phi"],
+                    1.0 - res["phi"],
+                    res["Lm_px"], res["max_m"],   # Blanche = matière
+                    res["Lp_px"], res["max_p"],   # Noire = pores
+                    res["SurfSpe_1_per_px"]
                 )
+
                 self.canvas_cld.ax.text(
                     0.98, 0.98, txt,
                     transform=self.canvas_cld.ax.transAxes,
                     ha="right", va="top",
-                    fontsize=10,
+                    fontsize=8,
                     bbox=dict(boxstyle="round,pad=0.35", alpha=0.85)
                 )
                 self.canvas_cld.fig.tight_layout()
                 self.canvas_cld.draw()
                 
                 
-                # I(q) UI — linéaire (équivalent à ton plt.figure + plt.plot)
+                # I(q) UI — linéaire 
                 self.canvas_iq_lin.ax.clear()
                 q = np.asarray(last["q"], dtype=float)
                 I = np.asarray(last["I"], dtype=float)
@@ -778,7 +787,7 @@ class MainWindow(QMainWindow):
                 q2 = q[mask]
                 I2 = I[mask]
                 
-                # (optionnel) enlever le premier point comme tu l'as fait pour log-log
+                #  enlever le premier point 
                 if q2.size > 1:
                     q2 = q2[1:]
                     I2 = I2[1:]
@@ -792,7 +801,7 @@ class MainWindow(QMainWindow):
                 self.canvas_iq_lin.draw()
 
 
-                # Iq UI
+                # affichage Iq UI
                 self.canvas_iq.ax.clear()
                 q = np.asarray(last["q"], dtype=float)
                 I = np.asarray(last["I"], dtype=float)
