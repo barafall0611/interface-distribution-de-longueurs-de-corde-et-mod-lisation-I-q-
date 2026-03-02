@@ -1,23 +1,21 @@
 # -*- coding: utf-8 -*-
 """
-Created on Wed Feb 11 13:48:45 2026
+Created on Mon Mar  2 09:03:01 2026
 
 @author: bara.fall
 """
 
 # -*- coding: utf-8 -*-
 """
-CLD 2D (image) + XYZ -> CLD 3D + I(q) — GUI PyQt5 
+CLD 2D (image) + XYZ -> CLD 3D + I(q) — GUI PyQt5
 
-# %%
-- Onglet 1 : ton interface 2D (4 cas + export + affichage CLD/IQ)
+- Onglet 1 : interface 2D (4 cas + export + affichage CLD/IQ)
 - Onglet 2 : interface XYZ (fichier xyz/csv/txt -> voxelisation sphères -> CLD 3D -> I(q) + export csv)
 - PyVista : optionnel, NON bloquant si pyvistaqt.BackgroundPlotter dispo
 
 Lancer :
     python cld_gui_full.py
 """
-#
 
 import sys
 import io
@@ -26,12 +24,13 @@ from pathlib import Path
 import numpy as np
 import tifffile as tiff
 
-
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QCursor
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFileDialog, QMessageBox,
     QVBoxLayout, QHBoxLayout, QFormLayout, QGridLayout, QGroupBox,
     QLineEdit, QSpinBox, QDoubleSpinBox, QCheckBox, QPushButton, QTextEdit,
-    QLabel, QTabWidget, QProgressBar, QScrollArea
+    QLabel, QTabWidget, QProgressBar, QScrollArea, QToolTip
 )
 
 import matplotlib
@@ -125,20 +124,15 @@ QPushButton:disabled { background: #141826; color: #7d859d; border: 1px solid #2
 
 QTabWidget::pane { border: 1px solid #22283a; border-radius: 10px; background: #151824; }
 
-
-
-
-
 QTabBar::tab {
   background: #10131c;
   border: 1px solid #22283a;
   border-bottom: none;
 
-  /* + grand */
-  padding: 10px 18px;        /* hauteur + largeur */
-  min-height: 34px;          /* hauteur mini */
-  min-width: 120px;          /* largeur mini */
-  font-size: 12.5px;         /* texte plus grand */
+  padding: 10px 18px;
+  min-height: 34px;
+  min-width: 120px;
+  font-size: 12.5px;
 
   margin-right: 8px;
   border-top-left-radius: 10px;
@@ -154,17 +148,12 @@ QTabBar::tab:selected {
   border-color: #2a3146;
 }
 
-
 QTabWidget::pane {
   border: 1px solid #22283a;
   border-radius: 10px;
   background: #151824;
   padding-top: 4px;
 }
-
-
-
-QTabBar::tab:selected { background: #151824; color: #ffffff; border-color: #2a3146; }
 
 QProgressBar {
   border: 1px solid #22283a;
@@ -182,6 +171,46 @@ QScrollArea { background: transparent; border: none; }
 
 
 # =============================================================================
+# INFO ICON (clic + hover)
+# =============================================================================
+class InfoIcon(QLabel):
+    """Petit 'ℹ' cliquable.
+    - Hover: tooltip normal
+    - Clic: tooltip forcé à la position de la souris
+    """
+    def __init__(self, text: str, parent=None):
+        super().__init__("ℹ", parent)
+        self._text = str(text)
+
+        self.setCursor(Qt.PointingHandCursor)
+        self.setToolTip(self._text)  # hover
+
+        self.setStyleSheet("""
+            QLabel {
+                color: #7aa2ff;
+                font-weight: 900;
+                padding: 0px 2px;
+            }
+            QLabel:hover { color: #9bb7ff; }
+        """)
+
+    def mousePressEvent(self, event):
+        QToolTip.showText(QCursor.pos(), self._text, self)
+        event.accept()
+
+
+def with_info(widget: QWidget, text: str) -> QWidget:
+    """Wrap widget + un petit ℹ à droite."""
+    box = QWidget()
+    lay = QHBoxLayout(box)
+    lay.setContentsMargins(0, 0, 0, 0)
+    lay.setSpacing(6)
+    lay.addWidget(widget, 1)
+    lay.addWidget(InfoIcon(text), 0)
+    return box
+
+
+# =============================================================================
 # Matplotlib Canvas (propre)
 # =============================================================================
 class MplCanvas(FigureCanvas):
@@ -191,7 +220,6 @@ class MplCanvas(FigureCanvas):
         super().__init__(fig)
 
 
-    
 # =============================================================================
 # OUTILS 2D (image)
 # =============================================================================
@@ -204,6 +232,7 @@ def lire_en_gris(img_path):
         img /= 255.0
     return img
 
+
 def binariser_image(img_gray, thr_8bit=125.7):
     img8 = (img_gray * 255).round().astype(np.uint8)
     vals = np.unique(img8)
@@ -211,11 +240,15 @@ def binariser_image(img_gray, thr_8bit=125.7):
     print("valeurs (min..max):", vals[:10], "...", vals[-10:])
     return img8 > thr_8bit
 
+
 def corriger_bords(binary):
     b = binary.copy()
-    b[0, :] = False; b[-1, :] = False
-    b[:, 0] = False; b[:, -1] = False
+    b[0, :] = False
+    b[-1, :] = False
+    b[:, 0] = False
+    b[:, -1] = False
     return b
+
 
 def supprimer_pixels_isoles(binary, min_size=5):
     b = binary.astype(bool)
@@ -238,19 +271,29 @@ def longueurs_cordes_1d(arr_bool, px_min):
     L = ends[:n] - starts[:n]
     return L[L >= px_min]
 
+
 def _couper_droite_dans_image(theta, x0, y0, w, h):
-    dx = np.cos(theta); dy = np.sin(theta)
+    dx = np.cos(theta)
+    dy = np.sin(theta)
     ts = []
     if abs(dx) > 1e-12:
-        t = (0 - x0) / dx; y = y0 + t * dy
-        if 0 <= y <= h - 1: ts.append(t)
-        t = ((w - 1) - x0) / dx; y = y0 + t * dy
-        if 0 <= y <= h - 1: ts.append(t)
+        t = (0 - x0) / dx
+        y = y0 + t * dy
+        if 0 <= y <= h - 1:
+            ts.append(t)
+        t = ((w - 1) - x0) / dx
+        y = y0 + t * dy
+        if 0 <= y <= h - 1:
+            ts.append(t)
     if abs(dy) > 1e-12:
-        t = (0 - y0) / dy; x = x0 + t * dx
-        if 0 <= x <= w - 1: ts.append(t)
-        t = ((h - 1) - y0) / dy; x = x0 + t * dx
-        if 0 <= x <= w - 1: ts.append(t)
+        t = (0 - y0) / dy
+        x = x0 + t * dx
+        if 0 <= x <= w - 1:
+            ts.append(t)
+        t = ((h - 1) - y0) / dy
+        x = x0 + t * dx
+        if 0 <= x <= w - 1:
+            ts.append(t)
     if len(ts) < 2:
         return None
     t1, t2 = float(np.min(ts)), float(np.max(ts))
@@ -307,12 +350,15 @@ def histogramme_matlab_probabilite(lens, binwidth=1):
         r = (a * binwidth + (a - 1) * binwidth) / 2.0
     return r, f
 
+
 def preparer_fm_fv_matlab(fm, fv, cal_len):
     fm = np.asarray(fm, dtype=float)
     fv = np.asarray(fv, dtype=float)
     L = max(len(fm), len(fv))
-    if len(fm) < L: fm = np.pad(fm, (0, L - len(fm)))
-    if len(fv) < L: fv = np.pad(fv, (0, L - len(fv)))
+    if len(fm) < L:
+        fm = np.pad(fm, (0, L - len(fm)))
+    if len(fv) < L:
+        fv = np.pad(fv, (0, L - len(fv)))
     fm2 = fm[fm != 0]
     fv2 = fv[fv != 0]
     if cal_len is not None and np.isfinite(cal_len) and cal_len != 0:
@@ -320,14 +366,17 @@ def preparer_fm_fv_matlab(fm, fv, cal_len):
         fv2 = fv2 / cal_len
     return fm2, fv2
 
+
 def modeliser_Iq_matlab_2d(fm, fv, SurfSpe, eps_denom=1e-12, k0=1):
     fm = np.asarray(fm, dtype=float)
     fv = np.asarray(fv, dtype=float)
     if fm.size == 0 or fv.size == 0:
         return np.array([]), np.array([])
     L = max(fm.size, fv.size)
-    if fm.size < L: fm = np.pad(fm, (0, L - fm.size))
-    if fv.size < L: fv = np.pad(fv, (0, L - fv.size))
+    if fm.size < L:
+        fm = np.pad(fm, (0, L - fm.size))
+    if fv.size < L:
+        fv = np.pad(fv, (0, L - fv.size))
     ftm = np.fft.fft(fm)
     ftv = np.fft.fft(fv)
     half = L // 2 + 1
@@ -348,6 +397,7 @@ def modeliser_Iq_matlab_2d(fm, fv, SurfSpe, eps_denom=1e-12, k0=1):
     I = (-SurfSpe / (16 * s[:-1] * (np.pi ** 3))) * derv
     return q[:-1], I
 
+
 def surface_specific_from_L(Lp_px, Lm_px, cal_len_um_per_px=None):
     if not (np.isfinite(Lp_px) and np.isfinite(Lm_px)) or (Lp_px <= 0) or (Lm_px <= 0):
         return np.nan, np.nan, np.nan, np.nan
@@ -366,9 +416,11 @@ def save_csv_xy(path: Path, x, y, header: str):
     data = np.column_stack([x, y])
     np.savetxt(path, data, delimiter=";", header=header, comments="", fmt="%.10g")
 
+
 def save_image_u8(path: Path, img_float01: np.ndarray):
     arr = np.clip(img_float01 * 255, 0, 255).astype(np.uint8)
     skio.imsave(str(path), arr)
+
 
 def save_bool_png(path: Path, b: np.ndarray):
     skio.imsave(str(path), (b.astype(np.uint8) * 255))
@@ -422,6 +474,7 @@ def build_cld_figure(res, case_name, *, plot_logy, px_min, xmax_r):
     fig.tight_layout()
     return fig
 
+
 def build_iq_loglog_figure(res, case_name):
     fig = Figure(figsize=(7, 5), dpi=160)
     ax = fig.add_subplot(111)
@@ -429,9 +482,11 @@ def build_iq_loglog_figure(res, case_name):
     q = np.asarray(res["q"], dtype=float)
     I = np.asarray(res["I"], dtype=float)
     mask = np.isfinite(q) & np.isfinite(I) & (q > 0) & (I > 0)
-    q = q[mask]; I = I[mask]
+    q = q[mask]
+    I = I[mask]
     if q.size > 1:
-        q = q[1:]; I = I[1:]
+        q = q[1:]
+        I = I[1:]
 
     ax.plot(q, I, marker="x", linewidth=1.5)
     ax.set_xscale("log")
@@ -442,6 +497,7 @@ def build_iq_loglog_figure(res, case_name):
 
     fig.tight_layout()
     return fig
+
 
 def build_iq_linear_figure(res, case_name):
     fig = Figure(figsize=(7, 5), dpi=160)
@@ -485,7 +541,7 @@ def executer_cas_2d(
     mat_mask = binary
 
     lens_p = tirer_droites_isotropes(pores_mask, n_lines=N_LINES, px_min=PX_MIN, seed=seed_p)
-    lens_m = tirer_droites_isotropes(mat_mask,   n_lines=N_LINES, px_min=PX_MIN, seed=seed_m)
+    lens_m = tirer_droites_isotropes(mat_mask, n_lines=N_LINES, px_min=PX_MIN, seed=seed_m)
 
     Lp = float(np.mean(lens_p)) if lens_p.size else np.nan
     Lm = float(np.mean(lens_m)) if lens_m.size else np.nan
@@ -530,7 +586,7 @@ def executer_cas_2d(
 
 
 # =============================================================================
-# XYZ -> CLD 3D + I(q) (fonctions du script XYZ)
+# XYZ -> CLD 3D + I(q)
 # =============================================================================
 def read_xyz(path: str, fmt: str = "csv", skiprows: int = 0) -> np.ndarray:
     delimiter = "," if fmt.lower() == "csv" else None
@@ -541,11 +597,10 @@ def read_xyz(path: str, fmt: str = "csv", skiprows: int = 0) -> np.ndarray:
         raise ValueError("Fichier invalide: il faut au moins 3 colonnes (x,y,z).")
     return data[:, :3].astype(float)
 
-def sphere(path, join):
-    print('....')
 
 def sphere_radius_from_rg(Rg_primary: float) -> float:
     return float(np.sqrt(5.0 / 3.0) * float(Rg_primary))
+
 
 def estimate_typical_spacing(X: np.ndarray, n_pairs: int = 20000, seed: int = 0) -> float:
     X = np.asarray(X, float)
@@ -560,6 +615,7 @@ def estimate_typical_spacing(X: np.ndarray, n_pairs: int = 20000, seed: int = 0)
         return np.nan
     d = np.linalg.norm(X[i[m]] - X[j[m]], axis=1)
     return float(np.median(d)) if d.size else np.nan
+
 
 def compute_R_in_xyz_units(
     X_xyz: np.ndarray,
@@ -597,6 +653,7 @@ def compute_R_in_xyz_units(
     }
     return float(R_xyz), float(R_A), info
 
+
 def show_xyz_pyvista_igor_like(
     X, R_xyz, case_name,
     max_spheres=30000, seed=0,
@@ -621,7 +678,7 @@ def show_xyz_pyvista_igor_like(
     max_abs = np.max(np.abs([mn0, mx0]))
     half = float(max_abs)
     mn = np.array([-half, -half, -half])
-    mx = np.array([ half,  half,  half])
+    mx = np.array([half, half, half])
     bounds = (mn[0], mx[0], mn[1], mx[1], mn[2], mx[2])
     box = pv.Box(bounds=bounds)
 
@@ -645,7 +702,6 @@ def show_xyz_pyvista_igor_like(
     )
     bp.add_axes(line_width=2)
     bp.show_grid(color="black")
-
     try:
         bp.add_text(case_name, position="upper_left", font_size=12, color="black")
     except Exception:
@@ -657,6 +713,7 @@ def show_xyz_pyvista_igor_like(
 
     print("[PyVistaQt] BackgroundPlotter OK (non bloquant).")
     return bp
+
 
 def voxelize_spheres_safe(X: np.ndarray, R: float, voxel: float, padding: float, max_voxels_total: int):
     X = np.asarray(X, float)
@@ -698,6 +755,7 @@ def voxelize_spheres_safe(X: np.ndarray, R: float, voxel: float, padding: float,
 
     return vol, mn, voxel, (nx, ny, nz)
 
+
 def random_unit_vector(rng):
     u = rng.uniform(0.0, 1.0)
     v = rng.uniform(0.0, 1.0)
@@ -705,6 +763,7 @@ def random_unit_vector(rng):
     z = 2 * v - 1
     r = np.sqrt(max(0.0, 1.0 - z*z))
     return np.array([r*np.cos(theta), r*np.sin(theta), z], dtype=float)
+
 
 def intersect_line_aabb(p0, d, bounds_min, bounds_max):
     tmin = -np.inf
@@ -723,6 +782,7 @@ def intersect_line_aabb(p0, d, bounds_min, bounds_max):
                 return None
     return tmin, tmax
 
+
 def chords_1d(arr_bool, px_min):
     a = np.asarray(arr_bool).astype(bool).astype(np.int8)
     da = np.diff(np.r_[0, a, 0])
@@ -733,6 +793,7 @@ def chords_1d(arr_bool, px_min):
     n = min(starts.size, ends.size)
     L = ends[:n] - starts[:n]
     return L[L >= px_min]
+
 
 def sample_profile_along_line(vol, pA, pB, step_vox=1.0):
     v = pB - pA
@@ -757,6 +818,7 @@ def sample_profile_along_line(vol, pA, pB, step_vox=1.0):
         return np.array([], dtype=bool)
 
     return vol[idx[:, 0], idx[:, 1], idx[:, 2]]
+
 
 def cld_3d_from_volume(vol, n_lines, px_min, seed=0, step_vox=1.0):
     rng = np.random.default_rng(seed)
@@ -789,12 +851,14 @@ def cld_3d_from_volume(vol, n_lines, px_min, seed=0, step_vox=1.0):
 
     return np.concatenate(chords).astype(float) if chords else np.array([], dtype=float)
 
+
 def phi_sv_from_mean_chords(L_noire, L_blanche):
     if not (np.isfinite(L_noire) and np.isfinite(L_blanche)) or L_noire <= 0 or L_blanche <= 0:
         return np.nan, np.nan
     phi = L_noire / (L_noire + L_blanche)
     Sv = (4 * phi * (1 - phi)) * (1 / L_blanche + 1 / L_noire)
     return phi, Sv
+
 
 def modeliser_Iq_matlab_3d(fm, fv, SurfSpe, eps_denom=1e-12, k0=1):
     fm = np.asarray(fm, dtype=float)
@@ -803,8 +867,10 @@ def modeliser_Iq_matlab_3d(fm, fv, SurfSpe, eps_denom=1e-12, k0=1):
         return np.array([]), np.array([])
 
     L = max(fm.size, fv.size)
-    if fm.size < L: fm = np.pad(fm, (0, L - fm.size))
-    if fv.size < L: fv = np.pad(fv, (0, L - fv.size))
+    if fm.size < L:
+        fm = np.pad(fm, (0, L - fm.size))
+    if fv.size < L:
+        fv = np.pad(fv, (0, L - fv.size))
 
     ftm = np.fft.fft(fm)
     ftv = np.fft.fft(fv)
@@ -821,7 +887,6 @@ def modeliser_Iq_matlab_3d(fm, fv, SurfSpe, eps_denom=1e-12, k0=1):
     if k0 >= half:
         return np.array([]), np.array([])
 
-    # (comme ton script XYZ)
     s = np.arange(k0, half + 1, dtype=float) / (float(L) / 2)
     a_parent = a_parent[k0 - 1:]
 
@@ -833,7 +898,7 @@ def modeliser_Iq_matlab_3d(fm, fv, SurfSpe, eps_denom=1e-12, k0=1):
 
 
 # =============================================================================
-# Onglet 2D (interface image complète)
+# Onglet 2D
 # =============================================================================
 class CLD2DTab(QWidget):
     def __init__(self, parent=None):
@@ -843,33 +908,68 @@ class CLD2DTab(QWidget):
         self.out_dir = ""
 
         # IO
-        self.path_value = QLineEdit(); self.path_value.setReadOnly(True); self.path_value.setPlaceholderText("Choisir une image…")
-        self.btn_image = QPushButton("📷  Image…"); self.btn_image.clicked.connect(self.choose_image)
+        self.path_value = QLineEdit()
+        self.path_value.setReadOnly(True)
+        self.path_value.setPlaceholderText("Choisir une image…")
+        self.btn_image = QPushButton("📷  Image…")
+        self.btn_image.clicked.connect(self.choose_image)
 
-        self.out_value = QLineEdit(); self.out_value.setReadOnly(True); self.out_value.setPlaceholderText("Choisir un dossier…")
-        self.btn_out = QPushButton("📁 Sortie…"); self.btn_out.clicked.connect(self.choose_outdir)
+        self.out_value = QLineEdit()
+        self.out_value.setReadOnly(True)
+        self.out_value.setPlaceholderText("Choisir un dossier…")
+        self.btn_out = QPushButton("📁 Sortie…")
+        self.btn_out.clicked.connect(self.choose_outdir)
 
         self.prefix = QLineEdit("resultats")
 
         # Params
-        self.nlines = QSpinBox(); self.nlines.setRange(100, 5_000_000); self.nlines.setValue(10000)
-        self.thr = QDoubleSpinBox(); self.thr.setRange(0.0, 255.0); self.thr.setDecimals(1); self.thr.setValue(125.7)
-        self.pxmin = QSpinBox(); self.pxmin.setRange(1, 500); self.pxmin.setValue(1)
-        self.binw = QSpinBox(); self.binw.setRange(1, 50); self.binw.setValue(1)
-        self.callen = QDoubleSpinBox(); self.callen.setRange(1e-9, 1e9); self.callen.setDecimals(6); self.callen.setValue(1.0)
-        self.minobj = QSpinBox(); self.minobj.setRange(1, 10000); self.minobj.setValue(5)
-        self.logy = QCheckBox("Axe Y en log"); self.logy.setChecked(True)
-        self.xmax = QSpinBox(); self.xmax.setRange(1, 100000); self.xmax.setValue(150)
-        self.export_bin = QCheckBox("Exporter les binaires"); self.export_bin.setChecked(True)
+        self.nlines = QSpinBox()
+        self.nlines.setRange(100, 5_000_000)
+        self.nlines.setValue(10000)
+
+        self.thr = QDoubleSpinBox()
+        self.thr.setRange(0.0, 255.0)
+        self.thr.setDecimals(1)
+        self.thr.setValue(125.7)
+
+        self.pxmin = QSpinBox()
+        self.pxmin.setRange(1, 500)
+        self.pxmin.setValue(1)
+
+        self.binw = QSpinBox()
+        self.binw.setRange(1, 50)
+        self.binw.setValue(1)
+
+        self.callen = QDoubleSpinBox()
+        self.callen.setRange(1e-9, 1e9)
+        self.callen.setDecimals(6)
+        self.callen.setValue(1.0)
+
+        self.minobj = QSpinBox()
+        self.minobj.setRange(1, 10000)
+        self.minobj.setValue(5)
+
+        self.logy = QCheckBox("Axe Y en log")
+        self.logy.setChecked(True)
+
+        self.xmax = QSpinBox()
+        self.xmax.setRange(1, 100000)
+        self.xmax.setValue(150)
+
+        self.export_bin = QCheckBox("Exporter les binaires")
+        self.export_bin.setChecked(True)
 
         # Run
-        self.btn_run = QPushButton("▶  Lancer (avec les 4 cas) + Export")
+        self.btn_run = QPushButton("▶  Lancer + Export")
         self.btn_run.setObjectName("PrimaryButton")
         self.btn_run.clicked.connect(self.run)
-        self.progress = QProgressBar(); self.progress.setRange(0, 100); self.progress.setValue(0)
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
 
         # Log
-        self.log = QTextEdit(); self.log.setPlaceholderText("Console 2D")
+        self.log = QTextEdit()
+        self.log.setPlaceholderText("Console 2D")
         self.log.setMinimumHeight(80)
 
         # Tabs
@@ -896,7 +996,8 @@ class CLD2DTab(QWidget):
 
         io_box = QGroupBox("Entrées / Sorties")
         io_grid = QGridLayout(io_box)
-        io_grid.setHorizontalSpacing(5); io_grid.setVerticalSpacing(5)
+        io_grid.setHorizontalSpacing(5)
+        io_grid.setVerticalSpacing(5)
         io_grid.addWidget(QLabel("Image"), 0, 0)
         io_grid.addWidget(self.path_value, 0, 1)
         io_grid.addWidget(self.btn_image, 0, 2)
@@ -910,15 +1011,17 @@ class CLD2DTab(QWidget):
         form = QFormLayout(p_box)
         form.setVerticalSpacing(4)
         form.setHorizontalSpacing(10)
-        form.addRow("Nb_Chord", self.nlines)
-        form.addRow("thr_8bit (seuil binaire)", self.thr)
-        form.addRow("PX_MIN", self.pxmin)
-        form.addRow("BINWIDTH_PX", self.binw)
-        form.addRow("CAL_LEN_UM_PER_PX", self.callen)
-        form.addRow("MIN_OBJECT_SIZE", self.minobj)
-        form.addRow(self.logy)
-        form.addRow("XMAX_R_PX", self.xmax)
-        form.addRow(self.export_bin)
+
+        # --- Ici: widgets wrapés avec ℹ
+        form.addRow("Nb_Chord", with_info(self.nlines, "Nombre de droites tirées aléatoirement"))
+        form.addRow("thr_8bit (seuil binaire)", with_info(self.thr, "Seuil (0-255) appliqué à l'image.\n> • 0 = noir, 255 = blanc"))
+        form.addRow("PX_MIN", with_info(self.pxmin, "Longueur minimale d'une corde (en pixels) pour être comptée."))
+        form.addRow("BINWIDTH_PX", with_info(self.binw, "Largeur des classes de l'histogramme des cordes (en pixels)."))
+        form.addRow("CAL_LEN_UM_PER_PX", with_info(self.callen, "Calibration: nanoomètres par pixel.\nMet 1 si tu veux rester en unités pixel."))
+        form.addRow("MIN_OBJECT_SIZE", with_info(self.minobj, "Taille min pour supprimer objets isolés et petits trous (morphologie)."))
+        form.addRow(with_info(self.logy, "Active l'échelle logarithmique en Y sur les CLD."))
+        form.addRow("XMAX_R_PX", with_info(self.xmax, "Limite max de l'axe X (R) pour l'affichage CLD."))
+        form.addRow(with_info(self.export_bin, "Si coché: exporte aussi les images binaires (corrigées) dans le dossier de sortie."))
 
         run_box = QGroupBox("Lancement")
         run_layout = QVBoxLayout(run_box)
@@ -974,10 +1077,7 @@ class CLD2DTab(QWidget):
             QMessageBox.warning(self, "Sortie manquante", "Choisis un dossier de sortie.")
             return
 
-      
         Nb_Chord = int(self.nlines.value())
-
-
         thr_8bit = float(self.thr.value())
         PX_MIN = int(self.pxmin.value())
         BINWIDTH_PX = int(self.binw.value())
@@ -1002,18 +1102,18 @@ class CLD2DTab(QWidget):
                 img_gray = lire_en_gris(self.img_path)
                 binary0 = binariser_image(img_gray, thr_8bit=thr_8bit)
 
+                # (On garde l'image grise + binaire initial, c'est utile)
                 save_image_u8(out_dir / "img_gray.png", img_gray)
                 save_bool_png(out_dir / "binary0.png", binary0)
 
                 cases = [
-                        ("Pas de correction",     False, False, 3, 4),
-                        ("correction des bords",  False, True,  5, 6),
-                        ("correction pixels isolés", True, False, 7, 8),
-                        ("correction pixel+bord", True,  True,  1, 2),
-                    ]
+                    ("Pas de correction",          False, False, 3, 4),
+                    ("correction des bords",       False, True,  5, 6),
+                    ("correction pixels isolés",   True,  False, 7, 8),
+                    ("correction pixel+bord",      True,  True,  1, 2),
+                ]
 
                 last = None
-                
 
                 for i, (name, do_iso, do_bord, sp, sm) in enumerate(cases, start=1):
                     res = executer_cas_2d(
@@ -1025,27 +1125,39 @@ class CLD2DTab(QWidget):
                     )
                     last = res
 
-                    tag = f"cas_{i:02d}_{name.replace(' ', '_').replace('+','plus')}"
+                    # ✅ On exporte uniquement le cas "correction pixel+bord"
+                    export_this_case = (do_iso is True) and (do_bord is True)
 
-                    if EXPORT_BIN:
-                        save_bool_png(out_dir / f"{tag}_binary_corr.png", res["binary"])
+                    if export_this_case:
+                        tag = "cas_04_correction_pixelplusbord"  # nom fixe propre
 
-                    if res["Rp"].size:
-                        save_csv_xy(out_dir / f"{tag}_cld_pores.csv", res["Rp"], res["fp"], "R_pixel;f_R_probabilite")
-                    if res["Rm"].size:
-                        save_csv_xy(out_dir / f"{tag}_cld_matiere.csv", res["Rm"], res["fm"], "R_pixel;f_R_probabilite")
-                    if res["q"].size and res["I"].size:
-                        save_csv_xy(out_dir / f"{tag}_qI.csv", res["q"], res["I"], "q;I")
+                        # binaire corrigé (UNIQUEMENT ce cas)
+                        if EXPORT_BIN:
+                            save_bool_png(out_dir / f"{tag}_binary_corr.png", res["binary"])
 
-                    fig_cld = build_cld_figure(res, name, plot_logy=PLOT_LOGY, px_min=PX_MIN, xmax_r=XMAX_R_PX)
-                    fig_cld.savefig(str(out_dir / f"{tag}_CLD.png"))
+                        # CSV CLD + I(Q) (UNIQUEMENT ce cas)
+                        if res["Rp"].size:
+                            save_csv_xy(out_dir / f"{tag}_cld_pores.csv", res["Rp"], res["fp"], "R_pixel;f_R_probabilite")
+                        if res["Rm"].size:
+                            save_csv_xy(out_dir / f"{tag}_cld_matiere.csv", res["Rm"], res["fm"], "R_pixel;f_R_probabilite")
+                        if res["q"].size and res["I"].size:
+                            save_csv_xy(out_dir / f"{tag}_qI.csv", res["q"], res["I"], "q;I")
 
-                    if res["q"].size and res["I"].size:
-                        fig_iq_lin = build_iq_linear_figure(res, name)
-                        fig_iq_lin.savefig(str(out_dir / f"{tag}_Iq_linear.png"))
+                        # IMAGES CLD/IQ (UNIQUEMENT ce cas)
+                        fig_cld = build_cld_figure(res, name, plot_logy=PLOT_LOGY, px_min=PX_MIN, xmax_r=XMAX_R_PX)
+                        fig_cld.savefig(str(out_dir / f"{tag}_CLD.png"))
 
-                        fig_iq_log = build_iq_loglog_figure(res, name)
-                        fig_iq_log.savefig(str(out_dir / f"{tag}_Iq_loglog.png"))
+                        if res["q"].size and res["I"].size:
+                            fig_iq_lin = build_iq_linear_figure(res, name)
+                            fig_iq_lin.savefig(str(out_dir / f"{tag}_Iq_linear.png"))
+
+                            fig_iq_log = build_iq_loglog_figure(res, name)
+                            fig_iq_log.savefig(str(out_dir / f"{tag}_Iq_loglog.png"))
+
+                    else:
+                        # ❌ Tout le reste : pas d’exports (on laisse le calcul/logs)
+                        # (si tu veux VRAIMENT commenter, tu peux aussi carrément enlever ce bloc)
+                        pass
 
                     self.progress.setValue(int(i / 4 * 100))
 
@@ -1053,7 +1165,7 @@ class CLD2DTab(QWidget):
             (out_dir / "resume_complet.txt").write_text(txt_complet, encoding="utf-8")
             self.log.setPlainText(txt_complet)
 
-            # UI update (dernier cas) — IMPORTANT : utiliser last, pas res
+            # UI update (dernier cas) — c'est déjà le "pixel+bord"
             if last is not None:
                 # CLD
                 self.canvas_cld.ax.clear()
@@ -1110,8 +1222,10 @@ class CLD2DTab(QWidget):
                     self.canvas_iq_lin.ax.plot(q2, I2, "xr", linewidth=2)
                 self.canvas_iq_lin.ax.set_xlabel("Q", fontsize=14, fontweight="bold")
                 self.canvas_iq_lin.ax.set_ylabel("Intensité modélisée", fontsize=14, fontweight="bold")
-                self.canvas_iq_lin.ax.set_title(f"Modélisation de l'intensité en fonction de Q - {last['case']}",
-                                                fontsize=12, fontweight="bold")
+                self.canvas_iq_lin.ax.set_title(
+                    f"Modélisation de l'intensité en fonction de Q - {last['case']}",
+                    fontsize=12, fontweight="bold"
+                )
                 self.canvas_iq_lin.figure.tight_layout()
                 self.canvas_iq_lin.draw()
 
@@ -1120,9 +1234,11 @@ class CLD2DTab(QWidget):
                 q = np.asarray(last["q"], dtype=float)
                 I = np.asarray(last["I"], dtype=float)
                 mask = np.isfinite(q) & np.isfinite(I) & (q > 0) & (I > 0)
-                q = q[mask]; I = I[mask]
+                q = q[mask]
+                I = I[mask]
                 if q.size > 1:
-                    q = q[1:]; I = I[1:]
+                    q = q[1:]
+                    I = I[1:]
                 if q.size:
                     self.canvas_iq_log.ax.plot(q, I, "x-", linewidth=1.5)
                     self.canvas_iq_log.ax.set_xscale("log")
@@ -1142,7 +1258,7 @@ class CLD2DTab(QWidget):
 
 
 # =============================================================================
-# Onglet XYZ (interface complète)
+# Onglet XYZ
 # =============================================================================
 class XYZTab(QWidget):
     def __init__(self, parent=None):
@@ -1152,52 +1268,112 @@ class XYZTab(QWidget):
         self.out_dir = ""
 
         # IO
-        self.xyz_value = QLineEdit(); self.xyz_value.setReadOnly(True); self.xyz_value.setPlaceholderText("Choisir un fichier XYZ…")
-        self.btn_xyz = QPushButton("📄  XYZ…"); self.btn_xyz.clicked.connect(self.choose_xyz)
+        self.xyz_value = QLineEdit()
+        self.xyz_value.setReadOnly(True)
+        self.xyz_value.setPlaceholderText("Choisir un fichier XYZ…")
+        self.btn_xyz = QPushButton("📄  XYZ…")
+        self.btn_xyz.clicked.connect(self.choose_xyz)
 
-        self.out_value = QLineEdit(); self.out_value.setReadOnly(True); self.out_value.setPlaceholderText("Choisir un dossier…")
-        self.btn_out = QPushButton("📁 Sortie…"); self.btn_out.clicked.connect(self.choose_outdir)
+        self.out_value = QLineEdit()
+        self.out_value.setReadOnly(True)
+        self.out_value.setPlaceholderText("Choisir un dossier…")
+        self.btn_out = QPushButton("📁 Sortie…")
+        self.btn_out.clicked.connect(self.choose_outdir)
 
         self.case_name = QLineEdit("CASE_XYZ")
 
         # Params principaux
         self.fmt = QLineEdit("txt")  # txt/csv
-        self.skiprows = QSpinBox(); self.skiprows.setRange(0, 1_000_000); self.skiprows.setValue(1)
-        self.scale = QDoubleSpinBox(); self.scale.setRange(1e-12, 1e12); self.scale.setDecimals(8); self.scale.setValue(1.0)
+        self.skiprows = QSpinBox()
+        self.skiprows.setRange(0, 1_000_000)
+        self.skiprows.setValue(1)
 
-        self.primary_rg = QDoubleSpinBox(); self.primary_rg.setRange(1e-9, 1e9); self.primary_rg.setDecimals(6); self.primary_rg.setValue(10.0)
-        self.use_ang = QCheckBox("Utiliser ANGSTROM_PER_XYZ"); self.use_ang.setChecked(True)
-        self.ang_per_xyz = QDoubleSpinBox(); self.ang_per_xyz.setRange(1e-12, 1e12); self.ang_per_xyz.setDecimals(8); self.ang_per_xyz.setValue(10.0)
+        self.scale = QDoubleSpinBox()
+        self.scale.setRange(1e-12, 1e12)
+        self.scale.setDecimals(8)
+        self.scale.setValue(1.0)
 
-        self.voxel_size = QDoubleSpinBox(); self.voxel_size.setRange(1e-12, 1e12); self.voxel_size.setDecimals(12); self.voxel_size.setValue(1e-7)
-        self.padding = QDoubleSpinBox(); self.padding.setRange(0.0, 1e12); self.padding.setDecimals(6); self.padding.setValue(15.0)
-        self.max_voxels_total = QSpinBox(); self.max_voxels_total.setRange(1, 2_000_000_000); self.max_voxels_total.setValue(350_000_000)
+        self.primary_rg = QDoubleSpinBox()
+        self.primary_rg.setRange(1e-9, 1e9)
+        self.primary_rg.setDecimals(6)
+        self.primary_rg.setValue(10.0)
 
-        self.nb_chord = QSpinBox(); self.nb_chord.setRange(100, 5_000_000); self.nb_chord.setValue(20000)
+        self.use_ang = QCheckBox("Utiliser ANGSTROM_PER_XYZ")
+        self.use_ang.setChecked(True)
 
+        self.ang_per_xyz = QDoubleSpinBox()
+        self.ang_per_xyz.setRange(1e-12, 1e12)
+        self.ang_per_xyz.setDecimals(8)
+        self.ang_per_xyz.setValue(10.0)
 
-        self.pxmin = QSpinBox(); self.pxmin.setRange(1, 500); self.pxmin.setValue(1)
-        self.binw = QSpinBox(); self.binw.setRange(1, 50); self.binw.setValue(1)
-        self.xmax = QSpinBox(); self.xmax.setRange(1, 100000); self.xmax.setValue(150)
-        self.logy = QCheckBox("Axe Y en log"); self.logy.setChecked(True)
+        self.voxel_size = QDoubleSpinBox()
+        self.voxel_size.setRange(1e-12, 1e12)
+        self.voxel_size.setDecimals(12)
+        self.voxel_size.setValue(1e-7)
 
-        self.k0 = QSpinBox(); self.k0.setRange(1, 10_000); self.k0.setValue(3)
-        self.line_step = QDoubleSpinBox(); self.line_step.setRange(0.1, 100.0); self.line_step.setDecimals(3); self.line_step.setValue(1.0)
+        self.padding = QDoubleSpinBox()
+        self.padding.setRange(0.0, 1e12)
+        self.padding.setDecimals(6)
+        self.padding.setValue(15.0)
 
-        self.show_pyvista = QCheckBox("Afficher PyVista (si pyvistaqt dispo)"); self.show_pyvista.setChecked(True)
-        self.pv_max_spheres = QSpinBox(); self.pv_max_spheres.setRange(1, 2_000_000); self.pv_max_spheres.setValue(30000)
-        self.pv_sphere_res = QSpinBox(); self.pv_sphere_res.setRange(3, 64); self.pv_sphere_res.setValue(10)
+        self.max_voxels_total = QSpinBox()
+        self.max_voxels_total.setRange(1, 2_000_000_000)
+        self.max_voxels_total.setValue(350_000_000)
+
+        self.nb_chord = QSpinBox()
+        self.nb_chord.setRange(100, 5_000_000)
+        self.nb_chord.setValue(20000)
+
+        self.pxmin = QSpinBox()
+        self.pxmin.setRange(1, 500)
+        self.pxmin.setValue(1)
+
+        self.binw = QSpinBox()
+        self.binw.setRange(1, 50)
+        self.binw.setValue(1)
+
+        self.xmax = QSpinBox()
+        self.xmax.setRange(1, 100000)
+        self.xmax.setValue(150)
+
+        self.logy = QCheckBox("Axe Y en log")
+        self.logy.setChecked(True)
+
+        self.k0 = QSpinBox()
+        self.k0.setRange(1, 10_000)
+        self.k0.setValue(3)
+
+        self.line_step = QDoubleSpinBox()
+        self.line_step.setRange(0.1, 100.0)
+        self.line_step.setDecimals(3)
+        self.line_step.setValue(1.0)
+
+        self.show_pyvista = QCheckBox("Afficher PyVista (si pyvistaqt dispo)")
+        self.show_pyvista.setChecked(True)
+
+        self.pv_max_spheres = QSpinBox()
+        self.pv_max_spheres.setRange(1, 2_000_000)
+        self.pv_max_spheres.setValue(30000)
+
+        self.pv_sphere_res = QSpinBox()
+        self.pv_sphere_res.setRange(3, 64)
+        self.pv_sphere_res.setValue(10)
 
         # Run
         self.btn_run = QPushButton("▶  Lancer XYZ (CLD 3D + I(q))")
         self.btn_run.setObjectName("PrimaryButton")
         self.btn_run.clicked.connect(self.run_xyz)
-        self.progress = QProgressBar(); self.progress.setRange(0, 100); self.progress.setValue(0)
+
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
 
         # Log
-        self.log = QTextEdit(); self.log.setPlaceholderText("Console XYZ"); self.log.setMinimumHeight(80)
+        self.log = QTextEdit()
+        self.log.setPlaceholderText("Console XYZ")
+        self.log.setMinimumHeight(80)
 
-        # Figures (à droite)
+        # Figures
         self.tabs = QTabWidget()
         self.canvas_cld = MplCanvas()
         self.canvas_iq_lin = MplCanvas()
@@ -1213,7 +1389,8 @@ class XYZTab(QWidget):
 
         io_box = QGroupBox("Entrées / Sorties XYZ")
         io_grid = QGridLayout(io_box)
-        io_grid.setHorizontalSpacing(5); io_grid.setVerticalSpacing(5)
+        io_grid.setHorizontalSpacing(5)
+        io_grid.setVerticalSpacing(5)
         io_grid.addWidget(QLabel("XYZ"), 0, 0)
         io_grid.addWidget(self.xyz_value, 0, 1)
         io_grid.addWidget(self.btn_xyz, 0, 2)
@@ -1226,27 +1403,27 @@ class XYZTab(QWidget):
         p_box = QGroupBox("Paramètres XYZ")
         form = QFormLayout(p_box)
         form.setVerticalSpacing(4)
-        form.addRow("FMT (txt/csv)", self.fmt)
-        form.addRow("SKIPROWS", self.skiprows)
-        form.addRow("SCALE", self.scale)
-        form.addRow("PRIMARY_RG_ANGSTROM (Å)", self.primary_rg)
-        form.addRow(self.use_ang)
-        form.addRow("ANGSTROM_PER_XYZ", self.ang_per_xyz)
-        form.addRow("VOXEL_SIZE", self.voxel_size)
-        form.addRow("PADDING", self.padding)
-        form.addRow("MAX_VOXELS_TOTAL", self.max_voxels_total)
 
-        form.addRow("Nb_Chord", self.nb_chord)
-
-        form.addRow("PX_MIN", self.pxmin)
-        form.addRow("BINWIDTH_PX", self.binw)
-        form.addRow("XMAX_R", self.xmax)
-        form.addRow("K0", self.k0)
-        form.addRow("LINE_STEP_VOX", self.line_step)
-        form.addRow(self.logy)
-        form.addRow(self.show_pyvista)
-        form.addRow("PYVISTA_MAX_SPHERES", self.pv_max_spheres)
-        form.addRow("PYVISTA_SPHERE_RES", self.pv_sphere_res)
+        # ℹ sur les champs clés
+        form.addRow("FMT (txt/csv)", with_info(self.fmt, "Format du fichier: txt (espaces) ou csv (virgule)."))
+        form.addRow("SKIPROWS", with_info(self.skiprows, "Nombre de lignes à ignorer en haut du fichier (header)."))
+        form.addRow("SCALE", with_info(self.scale, "Facteur multiplicatif appliqué aux coordonnées (ex: convertir unités)."))
+        form.addRow("PRIMARY_RG_ANGSTROM (Å)", with_info(self.primary_rg, "Rg primaire en Å (Angström) pour estimer le rayon des sphères."))
+        form.addRow(with_info(self.use_ang, "Si coché: conversion physique R_xyz = R(Å) / ANGSTROM_PER_XYZ.\nSinon: estime automatiquement une échelle visuelle."))
+        form.addRow("ANGSTROM_PER_XYZ", with_info(self.ang_per_xyz, "Combien d'Å correspond à 1 unité XYZ (si conversion physique activée)."))
+        form.addRow("VOXEL_SIZE", with_info(self.voxel_size, "Taille d'un voxel (dans l'unité XYZ)."))
+        form.addRow("PADDING", with_info(self.padding, "Marge ajoutée autour de la boîte englobante avant voxelisation (unités XYZ)."))
+        form.addRow("MAX_VOXELS_TOTAL", with_info(self.max_voxels_total, "Limite de voxels total.\nSi dépassée, le voxel_size est augmenté automatiquement."))
+        form.addRow("Nb_Chord", with_info(self.nb_chord, "Nombre de droites isotropes en 3D pour mesurer les cordes."))
+        form.addRow("PX_MIN", with_info(self.pxmin, "Longueur minimale de corde (en voxels) pour être comptée."))
+        form.addRow("BINWIDTH_PX", with_info(self.binw, "Largeur des classes d'histogramme (en voxels)."))
+        form.addRow("XMAX_R", with_info(self.xmax, "Limite max de l'axe X (R) pour affichage CLD 3D."))
+        form.addRow("K0", with_info(self.k0, "Indice de départ k0 pour le calcul FFT dans la modélisation I(q)."))
+        form.addRow("LINE_STEP_VOX", with_info(self.line_step, "Pas d'échantillonnage le long d'une droite (en voxels). 1.0 = échantillonne voxel par voxel."))
+        form.addRow(with_info(self.logy, "Active l'échelle logarithmique en Y sur la CLD 3D."))
+        form.addRow(with_info(self.show_pyvista, "Affiche un nuage de sphères via PyVista si disponible.\nOptionnel, non bloquant."))
+        form.addRow("PYVISTA_MAX_SPHERES", with_info(self.pv_max_spheres, "Nombre max de sphères affichées dans PyVista (pour fluidité)."))
+        form.addRow("PYVISTA_SPHERE_RES", with_info(self.pv_sphere_res, "Résolution des sphères affichées. Plus grand = plus lourd."))
 
         run_box = QGroupBox("Lancement XYZ")
         run_layout = QVBoxLayout(run_box)
@@ -1313,9 +1490,7 @@ class XYZTab(QWidget):
         PADDING = float(self.padding.value())
         MAX_VOX = int(self.max_voxels_total.value())
 
-       
         Nb_Chord = int(self.nb_chord.value())
-
         PX_MIN = int(self.pxmin.value())
         BINWIDTH = int(self.binw.value())
         XMAX_R = int(self.xmax.value())
@@ -1380,11 +1555,8 @@ class XYZTab(QWidget):
                 print(f"[Voxel] dims={dims} ; voxel_used={voxel_used:.6g} ; total={dims[0]*dims[1]*dims[2]:,}")
                 self.progress.setValue(45)
 
-             
-
                 lens_noire = cld_3d_from_volume(vol_noire, n_lines=Nb_Chord, px_min=PX_MIN, seed=1, step_vox=STEP)
                 lens_blanche = cld_3d_from_volume(vol_blanche, n_lines=Nb_Chord, px_min=PX_MIN, seed=2, step_vox=STEP)
-
 
                 L_noire = float(np.mean(lens_noire)) if lens_noire.size else np.nan
                 L_blanche = float(np.mean(lens_blanche)) if lens_blanche.size else np.nan
@@ -1402,72 +1574,43 @@ class XYZTab(QWidget):
                 if fb.size and fn.size and np.isfinite(Sv):
                     q, Iq = modeliser_Iq_matlab_3d(fm=fb, fv=fn, SurfSpe=Sv, k0=K0)
 
-                # ============================================================
-                # EXPORTS COMPLETS (comme script original)
-                # ============================================================
-
-                # ---- Volume 3D exports
+                # EXPORTS
                 np.save(OUT / "vol_blanche.npy", vol_blanche.astype(np.uint8))
                 np.save(OUT / "vol_noire.npy", vol_noire.astype(np.uint8))
 
-                # Stack TIFF (ZYX)
                 stack = (vol_blanche.astype(np.uint8) * 255)
                 stack_zyx = np.transpose(stack, (2, 1, 0))
                 skio.imsave(str(OUT / "vol_blanche_stack.tif"), stack_zyx)
 
-                # ---- Aperçu volume 3D (matplotlib voxels)
                 from mpl_toolkits.mplot3d import Axes3D  # noqa
                 fig3d = plt.figure(figsize=(8, 7))
                 ax3d = fig3d.add_subplot(111, projection="3d")
 
                 nx, ny, nz = vol_blanche.shape
-                step = 1
-                while (nx // step) * (ny // step) * (nz // step) > 2_000_000:
-                    step *= 2
+                ds = 1
+                while (nx // ds) * (ny // ds) * (nz // ds) > 2_000_000:
+                    ds *= 2
 
-                v = vol_blanche[::step, ::step, ::step]
+                v = vol_blanche[::ds, ::ds, ::ds]
                 ax3d.voxels(v, edgecolor=None)
-                ax3d.set_title(f"Volume binaire 3D (downsample x{step})")
-
+                ax3d.set_title(f"Volume binaire 3D (downsample x{ds})")
                 plt.tight_layout()
                 fig3d.savefig(OUT / "volume_3D.png", dpi=200)
                 plt.close(fig3d)
 
-                # ---- CLD CSV
                 if Rn.size:
                     save_csv_xy(OUT / "cld_phase_noire.csv", Rn, fn, "R_voxel;f(R)_phase_noire")
                 if Rb.size:
                     save_csv_xy(OUT / "cld_phase_blanche.csv", Rb, fb, "R_voxel;f(R)_phase_blanche")
 
-                # ---- CLD_3D.png
-       
-                if Rn.size:
-                    mn = fn > 0 if PLOT_LOGY else np.ones_like(fn, dtype=bool)
-                    plt.plot(Rn[mn], fn[mn], "-o", ms=3, lw=1, label="Phase Noire")
-                    
-                if Rb.size:
-                    mb = fb > 0 if PLOT_LOGY else np.ones_like(fb, dtype=bool)
-                    plt.plot(Rb[mb], fb[mb], "-o", ms=3, lw=1, label="Phase Blanche")
+                # CLD_3D.png export depuis le canvas (plus bas) -> OK
 
-                plt.xlabel("R (voxel)")
-                plt.ylabel("f(R)")
-                plt.xlim(PX_MIN, XMAX_R)
-                plt.title(f"CLD 3D — {CASE}")
-                if PLOT_LOGY:
-                    plt.yscale("log")
-                """plt.legend()
-                plt.tight_layout()
-                plt.savefig(OUT / "CLD_3D.png", dpi=200)
-                plt.close()"""
-
-                # ---- I(q)
-                q_bin = np.array([])    # <--- (ajout: existe toujours)
-                I_bin = np.array([])    # <--- (ajout: existe toujours)
+                q_bin = np.array([])
+                I_bin = np.array([])
 
                 if q.size and Iq.size:
                     save_csv_xy(OUT / "qI.csv", q, Iq, "q;I(q)")
 
-                    # Linear
                     fig_lin = plt.figure(figsize=(7, 5))
                     plt.plot(q, Iq, "xr", lw=2)
                     plt.xlabel("Q")
@@ -1477,7 +1620,6 @@ class XYZTab(QWidget):
                     plt.savefig(OUT / "Iq_linear.png", dpi=200)
                     plt.close(fig_lin)
 
-                    # Log-log
                     fig_log = plt.figure(figsize=(7, 5))
                     m = np.isfinite(q) & np.isfinite(Iq) & (q > 0) & (Iq > 0)
                     plt.plot(q[m], Iq[m], "xr", lw=2)
@@ -1490,21 +1632,22 @@ class XYZTab(QWidget):
                     plt.savefig(OUT / "Iq_loglog.png", dpi=200)
                     plt.close(fig_log)
 
-                    # Log binning
-                    def log_binning_qI(q, I, n_bins=60):
-                        q = np.asarray(q); I = np.asarray(I)
-                        m = np.isfinite(q) & np.isfinite(I) & (q > 0) & (I > 0)
-                        q = q[m]; I = I[m]
-                        if q.size < 2:
+                    def log_binning_qI(qv, Iv, n_bins=60):
+                        qv = np.asarray(qv)
+                        Iv = np.asarray(Iv)
+                        m = np.isfinite(qv) & np.isfinite(Iv) & (qv > 0) & (Iv > 0)
+                        qv = qv[m]
+                        Iv = Iv[m]
+                        if qv.size < 2:
                             return np.array([]), np.array([])
-                        edges = np.logspace(np.log10(q.min()), np.log10(q.max()), n_bins + 1)
-                        idx = np.digitize(q, edges) - 1
+                        edges = np.logspace(np.log10(qv.min()), np.log10(qv.max()), n_bins + 1)
+                        idx = np.digitize(qv, edges) - 1
                         qb, Ib = [], []
                         for b in range(n_bins):
                             mb = idx == b
                             if np.any(mb):
-                                qb.append(np.exp(np.mean(np.log(q[mb]))))
-                                Ib.append(np.median(I[mb]))
+                                qb.append(np.exp(np.mean(np.log(qv[mb]))))
+                                Ib.append(np.median(Iv[mb]))
                         return np.array(qb), np.array(Ib)
 
                     q_bin, I_bin = log_binning_qI(q, Iq)
@@ -1523,20 +1666,6 @@ class XYZTab(QWidget):
                         plt.savefig(OUT / "Iq_loglog_binned.png", dpi=200)
                         plt.close(fig_bin)
 
-                # ---- resume.txt
-                resume = [
-                    "===== CLD 3D depuis XYZ + I(q) (GUI) =====",
-                    f"CASE: {CASE}",
-                    f"VOL shape: {vol_blanche.shape}",
-                    f"N_LINES: {Nb_Chord}",
-                    f"<L_noire>= {L_noire:.6g}",
-                    f"<L_blanche>= {L_blanche:.6g}",
-                    f"phi_noire= {phi:.6g}",
-                    f"Sv= {Sv:.6g} (1/vox)",
-                    f"I(q) computed: {bool(q.size and Iq.size)}",
-                ]
-                (OUT / "resume.txt").write_text("\n".join(resume), encoding="utf-8")
-
                 resume = [
                     "===== CLD 3D depuis XYZ + I(q) (GUI) =====",
                     f"OUT: {OUT}",
@@ -1551,16 +1680,16 @@ class XYZTab(QWidget):
                 (OUT / "resume_gui_xyz.txt").write_text("\n".join(resume), encoding="utf-8")
                 print("\n".join(resume))
 
-                # mémoriser pour affichage  (MODIF: stocker q_bin / I_bin)
                 self._last_xyz = {
                     "CASE": CASE,
+                    "OUT": OUT,
                     "Rn": Rn, "fn": fn,
                     "Rb": Rb, "fb": fb,
                     "phi": phi, "Sv": Sv,
                     "L_noire": L_noire, "L_blanche": L_blanche,
                     "q": q, "Iq": Iq,
-                    "q_bin": q_bin,     # <--- AJOUT
-                    "I_bin": I_bin,     # <--- AJOUT
+                    "q_bin": q_bin,
+                    "I_bin": I_bin,
                     "PX_MIN": PX_MIN, "XMAX_R": XMAX_R,
                     "PLOT_LOGY": PLOT_LOGY
                 }
@@ -1570,6 +1699,8 @@ class XYZTab(QWidget):
 
             last = getattr(self, "_last_xyz", None)
             if last:
+                OUT = last["OUT"]
+
                 # CLD 3D
                 self.canvas_cld.ax.clear()
                 if last["Rn"].size:
@@ -1604,12 +1735,7 @@ class XYZTab(QWidget):
                 )
                 self.canvas_cld.figure.tight_layout()
                 self.canvas_cld.draw()
-                
-              
                 self.canvas_cld.figure.savefig(OUT / "CLD_3D.png", dpi=200)
-
-                
-
 
                 # I(q) lin
                 self.canvas_iq_lin.ax.clear()
@@ -1624,11 +1750,8 @@ class XYZTab(QWidget):
                 self.canvas_iq_lin.figure.tight_layout()
                 self.canvas_iq_lin.draw()
 
-                # I(q) log-log  (MODIF: afficher le binned si dispo)
+                # I(q) log-log (binned si dispo)
                 self.canvas_iq_log.ax.clear()
-
-                q = np.asarray(last["q"], float)
-                Iq = np.asarray(last["Iq"], float)
                 q_bin = np.asarray(last.get("q_bin", np.array([])), float)
                 I_bin = np.asarray(last.get("I_bin", np.array([])), float)
 
@@ -1636,8 +1759,6 @@ class XYZTab(QWidget):
                     mb = np.isfinite(q_bin) & np.isfinite(I_bin) & (q_bin > 0) & (I_bin > 0)
                     if np.any(mb):
                         self.canvas_iq_log.ax.plot(q_bin[mb], I_bin[mb], "-o", ms=4, lw=1.5, label="log-binned")
-
-                        # brut en fond (comme dans l'image export binned)
                         m = np.isfinite(q) & np.isfinite(Iq) & (q > 0) & (Iq > 0)
                         if np.any(m):
                             self.canvas_iq_log.ax.plot(q[m], Iq[m], "x", alpha=0.25, label="brut")
@@ -1664,17 +1785,14 @@ class XYZTab(QWidget):
 
 
 # =============================================================================
-# Main Window (interface complète)
+# Main Window
 # =============================================================================
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("CLD 2D + XYZ→CLD 3D + I(q) — PyQt5")
-        #self.setMinimumSize(1280, 740)
-        
         self.setMinimumSize(1280, 880)
-        self.resize(1600, 920)   # taille initiale (pratique)
-
+        self.resize(1600, 920)
 
         self.main_tabs = QTabWidget()
         self.tab2d = CLD2DTab(self)
@@ -1685,7 +1803,6 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(self.main_tabs)
         self.statusBar().showMessage("Prêt.")
-    
 
 
 def main():
